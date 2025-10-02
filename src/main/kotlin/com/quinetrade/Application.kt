@@ -6,14 +6,14 @@ import kotlinx.coroutines.*
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
-}
+ }
 
 fun Application.initClient() {
     val client = NetClient()
     val wsPoll = BnsOrderBookPoll(client.client)
     val coroutineScope = CoroutineScope(Dispatchers.IO)
     coroutineScope.launch {
-      wsPoll.poll()
+      wsPoll.pollTrade()
     }
 }
 

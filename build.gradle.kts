@@ -38,6 +38,17 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.datetime)
 
+    implementation(libs.parquet.hadoop)
+    implementation(libs.parquet.avro)
+    implementation(libs.avro)
+    implementation("org.apache.hadoop:hadoop-common:3.3.6") {
+        exclude(group = "org.slf4j")
+        exclude(group = "org.apache.logging.log4j")
+    }
+    implementation("org.apache.hadoop:hadoop-mapreduce-client-core:3.3.6") {
+        exclude(group = "org.slf4j")
+        exclude(group = "org.apache.logging.log4j")
+    }
     // --- Utils ---
     implementation(libs.fastutil)
 

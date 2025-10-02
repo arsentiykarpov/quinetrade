@@ -8,6 +8,8 @@ datetime = "0.6.0"
 fastutil = "8.5.12"
 kotest = "5.9.1"
 mockk = "1.13.12"
+parquet = "1.13.1" 
+avro = "1.11.3"
 
 [libraries]
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
@@ -43,6 +45,10 @@ logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "lo
 ktor-server-config-yaml = { module = "io.ktor:ktor-server-config-yaml", version.ref = "ktor" }
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
 kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
+
+parquet-hadoop = { module = "org.apache.parquet:parquet-hadoop", version.ref = "parquet" }
+parquet-avro = { module = "org.apache.parquet:parquet-avro", version.ref = "parquet" }
+avro = { module = "org.apache.avro:avro", version.ref = "avro" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
