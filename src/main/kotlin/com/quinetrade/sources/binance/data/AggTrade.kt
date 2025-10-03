@@ -5,7 +5,10 @@ import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import kotlinx.serialization.SerialName
 
-sealed interface AggTrade {
+sealed class AggTrade {
+
+  var aggTrade: AggTradeDto? = null
+  var aggError: AggTradeError? = null
 
     @kotlinx.serialization.Serializable
     data class AggTradeDto(
@@ -24,9 +27,9 @@ sealed interface AggTrade {
         @get:JvmName("getIgnoreFlag")
         @SerialName("M")
         val M: Boolean  // ignore
-    ) : AggTrade
+    ) : AggTrade()
 
-    data class AggTradeError(val msg: String) : AggTrade
+    data class AggTradeError(val msg: String) : AggTrade()
 
 }
 

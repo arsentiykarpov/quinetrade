@@ -13,9 +13,12 @@ import io.ktor.websocket.readText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.slf4j.LoggerFactory
+import kotlin.reflect.KClass
 
 
-abstract class BaseStreamSource<T>(var url: String) : StreamSource<T> {
+abstract class BaseStreamSource<T : Any>(
+  final override val type: KClass<T>,
+  private var url: String) : StreamSource<T> {
 
     val client: HttpClient = NetClient().client
     private val log = LoggerFactory.getLogger("BinanceWS")

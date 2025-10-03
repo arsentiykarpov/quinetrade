@@ -14,26 +14,27 @@ import org.apache.avro.generic.GenericRecord
 import org.apache.avro.generic.GenericData
 import java.nio.file.Paths
 
-class AggTradeStreamSource(): BaseStreamSource<AggTrade>("wss://stream.binance.com:9443/ws/btcusdt@aggTrade") {
+class AggTradeStreamSource() : BaseStreamSource<AggTrade>(AggTrade::class,
+"wss://stream.binance.com:9443/ws/btcusdt@aggTrade") {
 
     val output: OutputFile = LocalOutputFile(Paths.get("/tmp/aggtrades.parquet"))
     val json = Json { ignoreUnknownKeys = true }
     val writer = AvroParquetWriter.builder<GenericRecord>(output)
-                  .withSchema(AGGTRADE_SCHEMA)
-                  .withCompressionCodec(CompressionCodecName.SNAPPY)
-                  .build()
+        .withSchema(AGGTRADE_SCHEMA)
+        .withCompressionCodec(CompressionCodecName.SNAPPY)
+        .build()
+
     init {
 
     }
 
-    override fun parseTextFrame(frame: Frame.Text): AggTrade { 
-      val trade = json.decodeFromString<AggTrade.AggTradeDto>(frame.readText())
-      writer.write(trade.toAvroRecord())
-      return trade
+    override fun parseTextFrame(frame: Frame.Text): AggTrade {
+        val trade = json.decodeFromString<AggTrade.AggTradeDto>(frame.readText())
+        writer.write(trade.toAvroRecord()) 
+        return trade
     }
 
     override fun error(): AggTrade {
-      return AggTrade.AggTradeError("error")
+        return AggTrade.AggTradeError("agg trade error")
     }
-    
 } 
