@@ -23,7 +23,7 @@ class BnsOrderBookPoll(val client: HttpClient) {
     suspend fun poll() = coroutineScope {
       var spreadStream = OrderBookStreamSource(log)
       var tradeStream = AggTradeStreamSource()
-      tradeSignals = TradeSignal(spreadStream, tradeStream, 10_000)
+//      tradeSignals = TradeSignal(spreadStream, tradeStream, 10_000)
     }
 
 

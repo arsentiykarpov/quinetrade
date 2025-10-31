@@ -14,8 +14,9 @@ import kotlinx.coroutines.launch
 import kotlin.math.ln
 import kotlin.math.sqrt
 import kotlin.system.measureNanoTime
+import org.slf4j.Logger
 
-class TradeSignal(val orderBook: OrderBookStreamSource, val aggTrade: AggTradeStreamSource, val windowMs: Long) {
+class TradeSignal(val orderBook: OrderBookStreamSource, val aggTrade: AggTradeStreamSource, val windowMs: Long, val log: Logger) {
 
     private val buf = ArrayDeque<Double>() // buyShare history
     private var cvd = 0.0
@@ -73,6 +74,7 @@ class TradeSignal(val orderBook: OrderBookStreamSource, val aggTrade: AggTradeSt
 
         launch {
             orderBook.observeStream().collect { book ->
+              log.debug(book.toString())
                 val b = book.t / windowMs
                 flushIfReady(b)
                 spread = book.spread

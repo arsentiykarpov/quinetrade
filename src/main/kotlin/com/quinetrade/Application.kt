@@ -1,8 +1,10 @@
 package com.quinetrade
 
+import com.quintrade.sources.binance.stream.OrderBookStreamSource
 import io.ktor.server.application.*
-import com.quinetrade.sources.binance.stream.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.runBlocking
+import org.slf4j.LoggerFactory
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
@@ -10,8 +12,16 @@ fun main(args: Array<String>) {
 
 fun Application.initClient() {
     val client = NetClient()
-    val wsPoll = BnsOrderBookPoll(client.client)
-    val coroutineScope = CoroutineScope(Dispatchers.IO)
+    var logger = LoggerFactory.getLogger("test")
+    val book = OrderBookStreamSource(logger)
+    var coroutineScope = CoroutineScope(Dispatchers.IO)
+    coroutineScope.launch {
+      book.poll()
+      book.observeStream().collect {
+        logger.debug(it.toString())
+      }
+
+    }
 }
 
 fun Application.module() {
@@ -21,5 +31,5 @@ fun Application.module() {
     configureSecurity()
     configureHTTP()
     initClient()
-    configureRouting()
+    //configureRouting()
 }

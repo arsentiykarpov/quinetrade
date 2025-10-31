@@ -12,11 +12,10 @@ import org.slf4j.LoggerFactory
 
 fun Application.configureRouting() = routing() {
     webSocket("/ws") {
-        val json = Json
         val log = LoggerFactory.getLogger("BinanceWS")
         var spreadStream = OrderBookStreamSource(log)
         var tradeStream = AggTradeStreamSource()
-        var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 10_000)
+        var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 10_000, log)
         tradeSignals.aggWindows().collect { w ->
             val p = WsPoint(
                 t = w.windowEnd,
@@ -29,6 +28,7 @@ fun Application.configureRouting() = routing() {
                 ts = w.ts,
                 obi = w.obi
             )
+            log.debug(p.toString())
             sendSerialized(p)
         }
     }
