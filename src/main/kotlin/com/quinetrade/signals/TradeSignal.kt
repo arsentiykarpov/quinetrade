@@ -4,6 +4,7 @@ import com.quintrade.sources.binance.data.AggTrade
 import com.quintrade.sources.binance.stream.AggTradeStreamSource
 import com.quintrade.sources.binance.stream.OrderBookStreamSource
 import com.quintrade.sources.binance.stream.LocalOutputFile
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.ticker
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -12,6 +13,12 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
+import kotlinx.coroutines.plus
 import kotlinx.serialization.json.Json
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericRecord
@@ -64,49 +71,45 @@ class TradeSignal(
     private val buf = ArrayDeque<Double>() // buyShare history
     private var cvd = 0.0
     private val zLen = 60
-
-    suspend fun process() = coroutineScope {
-        aggWindows().collect { w ->
-            val mid = w.mid ?: return@collect
-            val vwap = w.vwap ?: mid
-            cvd += (w.tb - w.ts)
-            val buyShare = w.buyShare
-            buf += buyShare
-            if (buf.size > zLen) buf.removeFirst()
-            val mean = buf.average()
-            val variance = buf.map {
-                val d = it - mean
-                d * d
-            }.average()
-            val std = sqrt(variance)
-            val zBuy = if (buf.size >= 10) (buyShare - mean) / std else 0.0
-            val div = vwap - mid
-        }
-    }
+    private var bucketCount = 0
 
     fun aggWindows(): Flow<WindowAgg> = channelFlow {
         var curBucket = Long.MIN_VALUE
-        var tb = 0.0;
+        var tb = 0.0
         var ts = 0.0
-        var vwapNum = 0.0;
+        var vwapNum = 0.0
         var vwapDen = 0.0
         var spread: Double? = null
         var obi: Double? = null
         var mid: Double? = null
 
+        fun safeDiv(n: Double, d: Double): Double? =
+            if (d > 0.0) n / d else null
+
         fun flushIfReady(nextBucket: Long) {
             if (curBucket == Long.MIN_VALUE) {
                 curBucket = nextBucket; return
             }
+            bucketCount += 1
             if (nextBucket != curBucket) {
                 val start = curBucket * windowMs
                 val end = (curBucket + 1) * windowMs
-                val buyShare = tb / (tb + ts)
-                val logRatio = ln(tb / ts)
-                val vwap = if (vwapDen > 0.0) vwapNum / vwapDen else null
-                trySend(
-                    WindowAgg(start, end, tb, ts, buyShare, logRatio, vwap, spread, obi, mid)
-                )
+
+                val buyShare = safeDiv(tb, tb + ts) ?: 0.0
+                val logRatio = if (tb > 0.0 && ts > 0.0) kotlin.math.ln(tb / ts) else 0.0
+                val vwap = safeDiv(vwapNum, vwapDen)
+
+                val w = WindowAgg(start, end, tb, ts, buyShare, logRatio, vwap, spread, obi, mid)
+
+                trySend(w)
+
+                // Write to Parquet but don't let it cancel the producer
+                try {
+                    saveRecord(w)
+                } catch (t: Throwable) {
+                    log.error("Parquet write failed: ${t.message}", t)
+                }
+
                 curBucket = nextBucket
                 tb = 0.0; ts = 0.0
                 vwapNum = 0.0; vwapDen = 0.0
@@ -114,7 +117,10 @@ class TradeSignal(
             }
         }
 
-        launch {
+        val supervisor = SupervisorJob(coroutineContext.job)
+        val scoped = this + supervisor
+
+        val jobBook = scoped.launch {
             orderBook.observeStream().collect { book ->
                 log.debug(book.toString())
                 val b = book.t / windowMs
@@ -125,38 +131,42 @@ class TradeSignal(
             }
         }
 
-        launch {
+        val jobTrades = scoped.launch {
             aggTrade.observeStream()
-                .map {
-                    it.aggTrade
-                }
+                .map { it.aggTrade }
                 .filterNotNull()
                 .collect { trade ->
                     val b = trade.T / windowMs
                     flushIfReady(b)
+
                     val qty = trade.q.toDoubleOrNull() ?: 0.0
                     val px = trade.p.toDoubleOrNull() ?: 0.0
+
                     if (trade.m) ts += qty else tb += qty
-                    if (px != null) {
+                    if (qty > 0.0) {
                         vwapNum += px * qty
                         vwapDen += qty
                     }
-
                 }
         }
 
-        // Optional: time-based flush to not “hang” if no new events cross a boundary
-        launch {
-            val tick = ticker(delayMillis = windowMs.toLong(), initialDelayMillis = windowMs.toLong())
-            for (unit in tick) {
-                if (curBucket != Long.MIN_VALUE) {
-                    // pretend we advanced one bucket; this will flush current partial window
-                    flushIfReady(curBucket + 1)
+        val jobTick = scoped.launch {
+            while (isActive) {
+                delay(windowMs)
+                if (bucketCount > 2) {
+                  writer.close()
+                  scoped.cancel()
                 }
+                if (curBucket != Long.MIN_VALUE) flushIfReady(curBucket + 1)
             }
         }
-        aggTrade.poll()
-        orderBook.poll()
+
+        awaitClose {
+            jobTick.cancel()
+            jobTrades.cancel()
+            jobBook.cancel()
+            supervisor.cancel()
+        }
     }
 
     fun saveRecord(w: WindowAgg) {
@@ -173,6 +183,7 @@ class TradeSignal(
             .set("mid", w.mid)
             .build()
         writer.write(record)
+        log.debug("Writing record: ${w.windowStart}")
     }
 
     data class WindowAgg(

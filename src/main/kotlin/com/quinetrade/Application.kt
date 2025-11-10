@@ -13,17 +13,22 @@ fun main(args: Array<String>) {
 
 fun Application.initClient() {
     val client = NetClient()
-    val log = LoggerFactory.getLogger("BinanceWS")
+    val log = LoggerFactory.getLogger("App logger")
     var spreadStream = OrderBookStreamSource(log)
     var tradeStream = AggTradeStreamSource()
     var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 10_000, log)
+    log.info("TEST")
     var scope = CoroutineScope(Dispatchers.IO)
     scope.launch {
-    spreadStream.poll()
-    tradeStream.poll()
-    tradeStream.observeStream().collect {
-        log.debug(it.toString())
+    tradeSignals.aggWindows().collect {
+      log.info(it.toString())
     }
+    }
+    scope.launch {
+      spreadStream.poll()
+    }
+    scope.launch {
+      tradeStream.poll()
     }
 }
 

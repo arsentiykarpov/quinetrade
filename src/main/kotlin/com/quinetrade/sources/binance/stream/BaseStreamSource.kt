@@ -36,7 +36,7 @@ abstract class BaseStreamSource<T : Any>(
             for (frame in incoming) {
                 frame as? Frame.Text ?: continue
                 stream.emit(parseFrame(frame))
-                log("<<< ${frame.readText()}")
+                //log("<<< ${frame.readText()}")
             }
         }
     }

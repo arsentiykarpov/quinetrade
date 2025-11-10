@@ -18,7 +18,6 @@ class OrderBookStreamSource(val log: Logger) : BaseStreamSource<OrderBookStreamS
     val book = OrderBookL2()
     override fun parseTextFrame(frame: Frame.Text): BookStats {
         val json = Json { ignoreUnknownKeys = true }
-        log.info("<<< ${frame.readText()}")
         val diff = json.decodeFromString<DepthDiff>(frame.readText())
 
         if (diff.prevFinalUpdateId != null && diff.prevFinalUpdateId != lastUpdateId) {
@@ -31,9 +30,6 @@ class OrderBookStreamSource(val log: Logger) : BaseStreamSource<OrderBookStreamS
         val spread = book.spreadAbs()
         val mid = book.mid()
         val obi = book.obi(10)
-        if (mid != null && spread != null && obi != null) {
-            println("mid=$mid spread=$spread obi=$obi")
-        }
         return BookStats(lastUpdateId, spread!!, obi!!, mid!!, null)
     }
 
