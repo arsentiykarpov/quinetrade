@@ -3,6 +3,7 @@ package com.quintrade.signals
 import com.quintrade.sources.binance.data.AggTrade
 import com.quintrade.sources.binance.stream.AggTradeStreamSource
 import com.quintrade.sources.binance.stream.OrderBookStreamSource
+import com.quintrade.sources.binance.stream.LocalOutputFile
 import kotlinx.coroutines.channels.ticker
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -11,35 +12,76 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import org.apache.avro.Schema
+import org.apache.avro.generic.GenericRecord
+import org.apache.avro.generic.GenericRecordBuilder
+import org.apache.parquet.avro.AvroParquetWriter
+import org.apache.parquet.hadoop.metadata.CompressionCodecName
+import org.apache.parquet.io.OutputFile
 import kotlin.math.ln
 import kotlin.math.sqrt
 import kotlin.system.measureNanoTime
 import org.slf4j.Logger
+import java.nio.file.Paths
 
-class TradeSignal(val orderBook: OrderBookStreamSource, val aggTrade: AggTradeStreamSource, val windowMs: Long, val log: Logger) {
+class TradeSignal(
+    val orderBook: OrderBookStreamSource,
+    val aggTrade: AggTradeStreamSource,
+    val windowMs: Long,
+    val log: Logger
+) {
+
+    val AGG_WINDOW_SCHEMA: Schema = Schema.Parser().parse(
+        """
+            {
+              "type": "record",
+              "name": "WindowAgg",
+              "namespace": "com.quinetrade.model",
+              "fields": [
+                { "name": "windowStart", "type": "long" },
+                { "name": "windowEnd", "type": "long" },
+                { "name": "tb", "type": "double" },
+                { "name": "ts", "type": "double" },
+                { "name": "buyShare", "type": "double" },
+                { "name": "logRatio", "type": "double" },
+                { "name": "vwap", "type": ["null", "double"], "default": null },
+                { "name": "spread", "type": ["null", "double"], "default": null },
+                { "name": "obi", "type": ["null", "double"], "default": null },
+                { "name": "mid", "type": ["null", "double"], "default": null }
+              ]
+            }
+    """.trimIndent()
+    )
+
+    val output: OutputFile = LocalOutputFile(Paths.get("/tmp/tradesignal.parquet"))
+    val json = Json { ignoreUnknownKeys = true }
+    val writer = AvroParquetWriter.builder<GenericRecord>(output)
+        .withSchema(AGG_WINDOW_SCHEMA)
+        .withCompressionCodec(CompressionCodecName.SNAPPY)
+        .build()
 
     private val buf = ArrayDeque<Double>() // buyShare history
     private var cvd = 0.0
     private val zLen = 60
 
     suspend fun process() = coroutineScope {
-      aggWindows().collect {
-        w ->
-          val mid = w.mid ?: return@collect
-          val vwap = w.vwap ?: mid
-          cvd += (w.tb - w.ts)
-          val buyShare = w.buyShare
-          buf += buyShare
-          if (buf.size > zLen) buf.removeFirst()
-          val mean = buf.average()
-          val variance = buf.map {
-            val d = it - mean
-            d * d
-          }.average()
-          val std = sqrt(variance)
-          val zBuy = if (buf.size >= 10) (buyShare - mean)/std else 0.0
-          val div = vwap - mid
-      }
+        aggWindows().collect { w ->
+            val mid = w.mid ?: return@collect
+            val vwap = w.vwap ?: mid
+            cvd += (w.tb - w.ts)
+            val buyShare = w.buyShare
+            buf += buyShare
+            if (buf.size > zLen) buf.removeFirst()
+            val mean = buf.average()
+            val variance = buf.map {
+                val d = it - mean
+                d * d
+            }.average()
+            val std = sqrt(variance)
+            val zBuy = if (buf.size >= 10) (buyShare - mean) / std else 0.0
+            val div = vwap - mid
+        }
     }
 
     fun aggWindows(): Flow<WindowAgg> = channelFlow {
@@ -74,7 +116,7 @@ class TradeSignal(val orderBook: OrderBookStreamSource, val aggTrade: AggTradeSt
 
         launch {
             orderBook.observeStream().collect { book ->
-              log.debug(book.toString())
+                log.debug(book.toString())
                 val b = book.t / windowMs
                 flushIfReady(b)
                 spread = book.spread
@@ -113,8 +155,25 @@ class TradeSignal(val orderBook: OrderBookStreamSource, val aggTrade: AggTradeSt
                 }
             }
         }
+        aggTrade.poll()
+        orderBook.poll()
     }
 
+    fun saveRecord(w: WindowAgg) {
+        val record = GenericRecordBuilder(AGG_WINDOW_SCHEMA)
+            .set("windowStart", w.windowStart)
+            .set("windowEnd", w.windowEnd)
+            .set("tb", w.tb)
+            .set("ts", w.ts)
+            .set("buyShare", w.buyShare)
+            .set("logRatio", w.logRatio)
+            .set("vwap", w.vwap)
+            .set("spread", w.spread)
+            .set("obi", w.obi)
+            .set("mid", w.mid)
+            .build()
+        writer.write(record)
+    }
 
     data class WindowAgg(
         val windowStart: Long,
@@ -129,11 +188,12 @@ class TradeSignal(val orderBook: OrderBookStreamSource, val aggTrade: AggTradeSt
         val mid: Double?
     )
 
-    
+
     data class Enriched(
         val w: WindowAgg,
         val cvd: Double,
         val zBuyShare: Double,
         val vwapMinusMid: Double
     )
+
 }

@@ -1,9 +1,10 @@
 package com.quinetrade
 
+import com.quintrade.signals.TradeSignal
+import com.quintrade.sources.binance.stream.AggTradeStreamSource
 import com.quintrade.sources.binance.stream.OrderBookStreamSource
 import io.ktor.server.application.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 
 fun main(args: Array<String>) {
@@ -12,15 +13,17 @@ fun main(args: Array<String>) {
 
 fun Application.initClient() {
     val client = NetClient()
-    var logger = LoggerFactory.getLogger("test")
-    val book = OrderBookStreamSource(logger)
-    var coroutineScope = CoroutineScope(Dispatchers.IO)
-    coroutineScope.launch {
-      book.poll()
-      book.observeStream().collect {
-        logger.debug(it.toString())
-      }
-
+    val log = LoggerFactory.getLogger("BinanceWS")
+    var spreadStream = OrderBookStreamSource(log)
+    var tradeStream = AggTradeStreamSource()
+    var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 10_000, log)
+    var scope = CoroutineScope(Dispatchers.IO)
+    scope.launch {
+    spreadStream.poll()
+    tradeStream.poll()
+    tradeStream.observeStream().collect {
+        log.debug(it.toString())
+    }
     }
 }
 

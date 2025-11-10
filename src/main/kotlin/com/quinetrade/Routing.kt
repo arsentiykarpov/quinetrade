@@ -11,27 +11,27 @@ import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
 fun Application.configureRouting() = routing() {
-    webSocket("/ws") {
-        val log = LoggerFactory.getLogger("BinanceWS")
-        var spreadStream = OrderBookStreamSource(log)
-        var tradeStream = AggTradeStreamSource()
-        var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 10_000, log)
-        tradeSignals.aggWindows().collect { w ->
-            val p = WsPoint(
-                t = w.windowEnd,
-                mid = w.mid,
-                spread = w.spread,
-                vwap = w.vwap,
-                buyShare = w.buyShare,
-                logRatio = w.logRatio,
-                tb = w.tb,
-                ts = w.ts,
-                obi = w.obi
-            )
-            log.debug(p.toString())
-            sendSerialized(p)
-        }
-    }
+//    webSocket("/ws") {
+//        val log = LoggerFactory.getLogger("BinanceWS")
+//        var spreadStream = OrderBookStreamSource(log)
+//        var tradeStream = AggTradeStreamSource()
+//        var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 10_000, log)
+//        tradeSignals.aggWindows().collect { w ->
+//            val p = WsPoint(
+//                t = w.windowEnd,
+//                mid = w.mid,
+//                spread = w.spread,
+//                vwap = w.vwap,
+//                buyShare = w.buyShare,
+//                logRatio = w.logRatio,
+//                tb = w.tb,
+//                ts = w.ts,
+//                obi = w.obi
+//            )
+//            log.debug(p.toString())
+//            sendSerialized(p)
+//        }
+//    }
 }
 
 @Serializable
