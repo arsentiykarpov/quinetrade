@@ -9,26 +9,33 @@ import org.slf4j.LoggerFactory
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
- }
+}
 
 fun Application.initClient() {
-    val client = NetClient()
     val log = LoggerFactory.getLogger("App logger")
     var spreadStream = OrderBookStreamSource(log)
     var tradeStream = AggTradeStreamSource()
-    var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 10_000, log)
-    log.info("TEST")
-    var scope = CoroutineScope(Dispatchers.IO)
+    var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 5_000, log)
+    val handler = CoroutineExceptionHandler { _, e -> log.error("Coroutine error", e) }
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + handler)
+
+    // Start producers
+    scope.launch { spreadStream.poll() }
+    scope.launch { tradeStream.poll() }
+
     scope.launch {
-    tradeSignals.aggWindows().collect {
-      log.info(it.toString())
+        tradeSignals.aggWindows().collect {
+        }
     }
-    }
+    // Collectors
     scope.launch {
-      spreadStream.poll()
+        spreadStream.observeStream().collect {
+        }
     }
+
     scope.launch {
-      tradeStream.poll()
+        tradeStream.observeStream().collect {
+        }
     }
 }
 

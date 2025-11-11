@@ -30,11 +30,14 @@ class AggTradeStreamSource() : BaseStreamSource<AggTrade>(AggTrade::class,
 
     override fun parseTextFrame(frame: Frame.Text): AggTrade {
         val trade = json.decodeFromString<AggTrade.AggTradeDto>(frame.readText())
-        writer.write(trade.toAvroRecord()) 
+        trade.aggTrade = trade
+        writer.write(trade.toAvroRecord())
         return trade
     }
 
     override fun error(): AggTrade {
-        return AggTrade.AggTradeError("agg trade error")
+        val err = AggTrade.AggTradeError("agg trade error")
+        err.aggError = err
+        return err
     }
 } 

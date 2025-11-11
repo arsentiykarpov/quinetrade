@@ -90,7 +90,6 @@ class TradeSignal(
             if (curBucket == Long.MIN_VALUE) {
                 curBucket = nextBucket; return
             }
-            bucketCount += 1
             if (nextBucket != curBucket) {
                 val start = curBucket * windowMs
                 val end = (curBucket + 1) * windowMs
@@ -110,6 +109,7 @@ class TradeSignal(
                     log.error("Parquet write failed: ${t.message}", t)
                 }
 
+                bucketCount += 1
                 curBucket = nextBucket
                 tb = 0.0; ts = 0.0
                 vwapNum = 0.0; vwapDen = 0.0
@@ -133,19 +133,22 @@ class TradeSignal(
 
         val jobTrades = scoped.launch {
             aggTrade.observeStream()
-                .map { it.aggTrade }
-                .filterNotNull()
-                .collect { trade ->
-                    val b = trade.T / windowMs
-                    flushIfReady(b)
+                .collect { tradeWrapper ->
+                    if (tradeWrapper.aggTrade != null) {
+                        var trade = tradeWrapper.aggTrade!!
+                        val b = trade.T / windowMs
+                        flushIfReady(b)
 
-                    val qty = trade.q.toDoubleOrNull() ?: 0.0
-                    val px = trade.p.toDoubleOrNull() ?: 0.0
+                        val qty = trade.q.toDoubleOrNull() ?: 0.0
+                        val px = trade.p.toDoubleOrNull() ?: 0.0
 
-                    if (trade.m) ts += qty else tb += qty
-                    if (qty > 0.0) {
-                        vwapNum += px * qty
-                        vwapDen += qty
+                        if (trade.m) ts += qty else tb += qty
+                        if (qty > 0.0) {
+                            vwapNum += px * qty
+                            vwapDen += qty
+                        }
+                    } else if (tradeWrapper.aggError != null) {
+                        throw IllegalStateException(tradeWrapper.aggError!!.msg)
                     }
                 }
         }
@@ -153,7 +156,7 @@ class TradeSignal(
         val jobTick = scoped.launch {
             while (isActive) {
                 delay(windowMs)
-                if (bucketCount > 2) {
+                if (bucketCount > 30) {
                   writer.close()
                   scoped.cancel()
                 }
@@ -183,7 +186,7 @@ class TradeSignal(
             .set("mid", w.mid)
             .build()
         writer.write(record)
-        log.debug("Writing record: ${w.windowStart}")
+        log.info("Writing record: ${w.windowStart}")
     }
 
     data class WindowAgg(
