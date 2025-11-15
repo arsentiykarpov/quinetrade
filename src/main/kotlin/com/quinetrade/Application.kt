@@ -13,28 +13,26 @@ fun main(args: Array<String>) {
 
 fun Application.initClient() {
     val log = LoggerFactory.getLogger("App logger")
-    var spreadStream = OrderBookStreamSource(log)
+    var spreadStream = OrderBookStreamSource()
     var tradeStream = AggTradeStreamSource()
     var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 5_000, log)
     val handler = CoroutineExceptionHandler { _, e -> log.error("Coroutine error", e) }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + handler)
 
     // Start producers
-    scope.launch { spreadStream.poll() }
-    scope.launch { tradeStream.poll() }
+    spreadStream.poll(scope)
+    tradeStream.poll(scope)
 
     scope.launch {
-        tradeSignals.aggWindows().collect {
-        }
-    }
-    // Collectors
-    scope.launch {
-        spreadStream.observeStream().collect {
-        }
-    }
-
-    scope.launch {
-        tradeStream.observeStream().collect {
+        try {
+            withTimeout(60_000) {
+                tradeSignals.aggWindows().collect {
+                }
+            }
+        } catch (e: Exception) {
+        } finally {
+            tradeSignals.stop()
+            scope.cancel()
         }
     }
 }

@@ -19,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.Json
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericRecord
@@ -71,7 +72,7 @@ class TradeSignal(
     private val buf = ArrayDeque<Double>() // buyShare history
     private var cvd = 0.0
     private val zLen = 60
-    private var bucketCount = 0
+    private var scope: CoroutineScope? = null
 
     fun aggWindows(): Flow<WindowAgg> = channelFlow {
         var curBucket = Long.MIN_VALUE
@@ -109,7 +110,6 @@ class TradeSignal(
                     log.error("Parquet write failed: ${t.message}", t)
                 }
 
-                bucketCount += 1
                 curBucket = nextBucket
                 tb = 0.0; ts = 0.0
                 vwapNum = 0.0; vwapDen = 0.0
@@ -118,11 +118,11 @@ class TradeSignal(
         }
 
         val supervisor = SupervisorJob(coroutineContext.job)
-        val scoped = this + supervisor
+        scope = this + supervisor
+        val scoped = scope!!
 
         val jobBook = scoped.launch {
             orderBook.observeStream().collect { book ->
-                log.debug(book.toString())
                 val b = book.t / windowMs
                 flushIfReady(b)
                 spread = book.spread
@@ -136,7 +136,7 @@ class TradeSignal(
                 .collect { tradeWrapper ->
                     if (tradeWrapper.aggTrade != null) {
                         var trade = tradeWrapper.aggTrade!!
-                        val b = trade.T / windowMs
+                        val b = trade.E / windowMs
                         flushIfReady(b)
 
                         val qty = trade.q.toDoubleOrNull() ?: 0.0
@@ -153,23 +153,17 @@ class TradeSignal(
                 }
         }
 
-        val jobTick = scoped.launch {
-            while (isActive) {
-                delay(windowMs)
-                if (bucketCount > 30) {
-                  writer.close()
-                  scoped.cancel()
-                }
-                if (curBucket != Long.MIN_VALUE) flushIfReady(curBucket + 1)
-            }
-        }
 
         awaitClose {
-            jobTick.cancel()
             jobTrades.cancel()
             jobBook.cancel()
             supervisor.cancel()
         }
+    }
+
+    fun stop() {
+      writer.close()
+      scope!!.cancel()
     }
 
     fun saveRecord(w: WindowAgg) {

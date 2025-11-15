@@ -11,7 +11,7 @@ import org.slf4j.Logger
 import java.awt.print.Book
 import kotlin.apply
 
-class OrderBookStreamSource(val log: Logger) : BaseStreamSource<OrderBookStreamSource.BookStats>(BookStats::class,
+class OrderBookStreamSource() : BaseStreamSource<OrderBookStreamSource.BookStats>(BookStats::class,
 "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms") {
 
     var lastUpdateId: Long = 0 // выставьте после snapshot
@@ -30,7 +30,7 @@ class OrderBookStreamSource(val log: Logger) : BaseStreamSource<OrderBookStreamS
         val spread = book.spreadAbs()
         val mid = book.mid()
         val obi = book.obi(10)
-        return BookStats(lastUpdateId, spread!!, obi!!, mid!!, null)
+        return BookStats(diff.eventTime!!, spread!!, obi!!, mid!!, null)
     }
 
 

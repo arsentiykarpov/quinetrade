@@ -12,6 +12,8 @@ import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.readText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import org.slf4j.LoggerFactory
 import kotlin.reflect.KClass
 
@@ -21,12 +23,13 @@ abstract class BaseStreamSource<T : Any>(
   private var url: String) : StreamSource<T> {
 
     val client: HttpClient = NetClient().client
-    private val log = LoggerFactory.getLogger("BinanceWS")
+    var log = LoggerFactory.getLogger("BinanceWS")
     val stream = MutableSharedFlow<T>()
+    var pollJob: Job? = null
 
-    suspend fun poll() = coroutineScope {
+    fun poll(scope: CoroutineScope) {
+        pollJob = scope.launch {
         client.webSocket(url) {
-            // Примерно раз в N секунд можно логировать агрегаты
             launch {
                 while (isActive) {
                     delay(1000)
@@ -39,6 +42,7 @@ abstract class BaseStreamSource<T : Any>(
                 //log("<<< ${frame.readText()}")
             }
         }
+      }
     }
 
     protected fun log(text: String) {
@@ -58,4 +62,7 @@ abstract class BaseStreamSource<T : Any>(
         return stream
     }
 
+    override fun clear() {
+      pollJob!!.cancel()
+    }
 } 
