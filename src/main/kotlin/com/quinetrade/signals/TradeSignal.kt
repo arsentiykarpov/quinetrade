@@ -32,6 +32,7 @@ import kotlin.math.sqrt
 import kotlin.system.measureNanoTime
 import org.slf4j.Logger
 import java.nio.file.Paths
+import java.lang.System
 
 class TradeSignal(
     val orderBook: OrderBookStreamSource,
@@ -62,12 +63,13 @@ class TradeSignal(
     """.trimIndent()
     )
 
-    val output: OutputFile = LocalOutputFile(Paths.get("/tmp/tradesignal.parquet"))
+    val output: OutputFile = LocalOutputFile(Paths.get("/tmp/tradesignal_${System.currentTimeMillis()}.parquet"))
     val json = Json { ignoreUnknownKeys = true }
-    val writer = AvroParquetWriter.builder<GenericRecord>(output)
+    var writer = AvroParquetWriter.builder<GenericRecord>(output)
         .withSchema(AGG_WINDOW_SCHEMA)
         .withCompressionCodec(CompressionCodecName.SNAPPY)
-        .build()
+        .build() //to lateinit
+    val ROTATE_PERIOD_MS = 10_000
 
     private val buf = ArrayDeque<Double>() // buyShare history
     private var cvd = 0.0
@@ -83,6 +85,7 @@ class TradeSignal(
         var spread: Double? = null
         var obi: Double? = null
         var mid: Double? = null
+        var currRotateMs = System.currentTimeMillis()
 
         fun safeDiv(n: Double, d: Double): Double? =
             if (d > 0.0) n / d else null
@@ -105,8 +108,12 @@ class TradeSignal(
 
                 // Write to Parquet but don't let it cancel the producer
                 try {
-                    saveRecord(w)
-                } catch (t: Throwable) {
+                    if (System.currentTimeMillis() - currRotateMs > ROTATE_PERIOD_MS) {
+                      rotateParq()
+                      currRotateMs = System.currentTimeMillis()
+                    }
+                    saveRecord(w) // move to processRecord() & add Mutex
+                } catch (t: Throwable) { 
                     log.error("Parquet write failed: ${t.message}", t)
                 }
 
@@ -159,6 +166,15 @@ class TradeSignal(
             jobBook.cancel()
             supervisor.cancel()
         }
+    }
+
+    fun rotateParq() {
+      val output: OutputFile = LocalOutputFile(Paths.get("/tmp/tradesignal_${System.currentTimeMillis()}.parquet"))
+      writer.close()
+      writer = AvroParquetWriter.builder<GenericRecord>(output)
+          .withSchema(AGG_WINDOW_SCHEMA)
+          .withCompressionCodec(CompressionCodecName.SNAPPY)
+          .build()
     }
 
     fun stop() {
