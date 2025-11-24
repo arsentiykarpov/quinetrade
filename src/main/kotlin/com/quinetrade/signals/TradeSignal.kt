@@ -15,11 +15,14 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericRecord
@@ -68,7 +71,8 @@ class TradeSignal(
     var writer = AvroParquetWriter.builder<GenericRecord>(output)
         .withSchema(AGG_WINDOW_SCHEMA)
         .withCompressionCodec(CompressionCodecName.SNAPPY)
-        .build() //to lateinit
+        .build()
+
     val ROTATE_PERIOD_MS = 10_000
 
     private val buf = ArrayDeque<Double>() // buyShare history
@@ -86,11 +90,11 @@ class TradeSignal(
         var obi: Double? = null
         var mid: Double? = null
         var currRotateMs = System.currentTimeMillis()
-
+        val events = Channel<Event>(Channel.UNLIMITED)
         fun safeDiv(n: Double, d: Double): Double? =
             if (d > 0.0) n / d else null
 
-        fun flushIfReady(nextBucket: Long) {
+        suspend fun flushIfReady(nextBucket: Long) {
             if (curBucket == Long.MIN_VALUE) {
                 curBucket = nextBucket; return
             }
@@ -131,7 +135,7 @@ class TradeSignal(
         val jobBook = scoped.launch {
             orderBook.observeStream().collect { book ->
                 val b = book.t / windowMs
-                flushIfReady(b)
+                events.send(Event.Quote(b))
                 spread = book.spread
                 obi = book.obi
                 mid = book.mid
@@ -144,8 +148,7 @@ class TradeSignal(
                     if (tradeWrapper.aggTrade != null) {
                         var trade = tradeWrapper.aggTrade!!
                         val b = trade.E / windowMs
-                        flushIfReady(b)
-
+                        events.send(Event.Trade(b))
                         val qty = trade.q.toDoubleOrNull() ?: 0.0
                         val px = trade.p.toDoubleOrNull() ?: 0.0
 
@@ -160,6 +163,9 @@ class TradeSignal(
                 }
         }
 
+        for (e in events) {
+            flushIfReady(e.time)
+        }
 
         awaitClose {
             jobTrades.cancel()
@@ -219,5 +225,10 @@ class TradeSignal(
         val zBuyShare: Double,
         val vwapMinusMid: Double
     )
+    
+    sealed class Event(var time: Long) {
+      class Trade(time: Long): Event(time)
+      class Quote(time: Long): Event(time)
+    }
 
 }
