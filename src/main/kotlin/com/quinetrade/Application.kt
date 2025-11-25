@@ -25,9 +25,7 @@ fun Application.initClient() {
 
     scope.launch {
         try {
-            withTimeout(60_000) {
-                tradeSignals.aggWindows().collect {
-                }
+            tradeSignals.aggWindows().collect {
             }
         } catch (e: Exception) {
         } finally {

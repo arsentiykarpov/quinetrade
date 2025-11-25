@@ -31,7 +31,6 @@ class AggTradeStreamSource() : BaseStreamSource<AggTrade>(AggTrade::class,
     override fun parseTextFrame(frame: Frame.Text): AggTrade {
         val trade = json.decodeFromString<AggTrade.AggTradeDto>(frame.readText())
         trade.aggTrade = trade
-        log.info("PROCESS " + trade)
         writer.write(trade.toAvroRecord())
         return trade
     }

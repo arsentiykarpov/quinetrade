@@ -73,7 +73,7 @@ class TradeSignal(
         .withCompressionCodec(CompressionCodecName.SNAPPY)
         .build()
 
-    val ROTATE_PERIOD_MS = 10_000
+    val ROTATE_PERIOD_MS = 100_000
 
     private val buf = ArrayDeque<Double>() // buyShare history
     private var cvd = 0.0
@@ -94,7 +94,7 @@ class TradeSignal(
         fun safeDiv(n: Double, d: Double): Double? =
             if (d > 0.0) n / d else null
 
-        suspend fun flushIfReady(nextBucket: Long) {
+        fun flushIfReady(nextBucket: Long) {
             if (curBucket == Long.MIN_VALUE) {
                 curBucket = nextBucket; return
             }
@@ -110,7 +110,6 @@ class TradeSignal(
 
                 trySend(w)
 
-                // Write to Parquet but don't let it cancel the producer
                 try {
                     if (System.currentTimeMillis() - currRotateMs > ROTATE_PERIOD_MS) {
                       rotateParq()
@@ -175,12 +174,14 @@ class TradeSignal(
     }
 
     fun rotateParq() {
+      log.info("START ROTATE")
       val output: OutputFile = LocalOutputFile(Paths.get("/tmp/tradesignal_${System.currentTimeMillis()}.parquet"))
       writer.close()
       writer = AvroParquetWriter.builder<GenericRecord>(output)
           .withSchema(AGG_WINDOW_SCHEMA)
           .withCompressionCodec(CompressionCodecName.SNAPPY)
           .build()
+      log.info("END ROTATE")
     }
 
     fun stop() {
