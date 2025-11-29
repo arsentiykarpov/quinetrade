@@ -1,7 +1,7 @@
 package com.quintrade.signals
 
+import com.quinetrade.sources.binance.stream.AggTradeStreamSource
 import com.quintrade.sources.binance.data.AggTrade
-import com.quintrade.sources.binance.stream.AggTradeStreamSource
 import com.quintrade.sources.binance.stream.OrderBookStreamSource
 import com.quintrade.sources.binance.stream.LocalOutputFile
 import kotlinx.coroutines.SupervisorJob

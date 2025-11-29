@@ -1,7 +1,6 @@
 package com.quinetrade
 
 import com.quintrade.signals.TradeSignal
-import com.quintrade.sources.binance.stream.AggTradeStreamSource
 import com.quintrade.sources.binance.stream.OrderBookStreamSource
 import io.ktor.server.application.*
 import io.ktor.server.routing.*
