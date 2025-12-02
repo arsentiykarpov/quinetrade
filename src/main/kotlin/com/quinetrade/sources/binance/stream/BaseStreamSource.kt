@@ -8,6 +8,7 @@ import kotlinx.coroutines.coroutineScope
 import io.ktor.websocket.Frame
 import io.ktor.client.HttpClient
 import com.quinetrade.NetClient
+import com.quintrade.sources.binance.stream.StreamRepository
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.readText
 import kotlinx.coroutines.delay
@@ -26,6 +27,7 @@ abstract class BaseStreamSource<T : Any>(
     var log = LoggerFactory.getLogger("BinanceWS")
     val stream = MutableSharedFlow<T>()
     var pollJob: Job? = null
+    var streamRepo: StreamRepository<String>? = null
 
     fun poll(scope: CoroutineScope) {
         pollJob = scope.launch {
