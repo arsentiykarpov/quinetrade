@@ -1,6 +1,11 @@
 import kotlinx.serialization.encodeToString
 import com.quintrade.sources.binance.data.AggTrade
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.Dispatchers
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -13,7 +18,7 @@ fun convertAggTradesCsvToJsonLines(
     input: Path,
     output: Path,
     symbol: String
-) {
+):Flow<String> = flow {
     Files.newBufferedReader(input).use { reader ->
         Files.newBufferedWriter(output).use { writer ->
             reader.lineSequence()
@@ -46,7 +51,8 @@ fun convertAggTradesCsvToJsonLines(
 
                     val jsonLine = json.encodeToString(dto)
                     writer.appendLine(jsonLine)
+                    emit(jsonLine)
                 }
         }
     }
-}
+}.flowOn(Dispatchers.IO)

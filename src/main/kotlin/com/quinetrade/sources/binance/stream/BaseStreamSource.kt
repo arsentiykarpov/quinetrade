@@ -9,6 +9,7 @@ import io.ktor.websocket.Frame
 import io.ktor.client.HttpClient
 import com.quinetrade.NetClient
 import com.quintrade.sources.binance.stream.StreamRepository
+import com.quintrade.sources.binance.stream.CsvStreamDataSource
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.readText
 import kotlinx.coroutines.delay
@@ -27,23 +28,26 @@ abstract class BaseStreamSource<T : Any>(
     var log = LoggerFactory.getLogger("BinanceWS")
     val stream = MutableSharedFlow<T>()
     var pollJob: Job? = null
-    var streamRepo: StreamRepository<String>? = null
+    var streamRepo: StreamRepository<String> = CsvStreamDataSource()
 
     fun poll(scope: CoroutineScope) {
         pollJob = scope.launch {
-        client.webSocket(url) {
-            launch {
-                while (isActive) {
-                    delay(1000)
-                }
+            streamRepo.stream().collect {
+              log.info(it)
             }
-
-            for (frame in incoming) {
-                frame as? Frame.Text ?: continue
-                stream.emit(parseFrame(frame))
-                //log("<<< ${frame.readText()}")
-            }
-        }
+//        client.webSocket(url) {
+//            launch {
+//                while (isActive) {
+//                    delay(1000)
+//                }
+//            }
+//
+//            for (frame in incoming) {
+//                frame as? Frame.Text ?: continue
+//                stream.emit(parseFrame(frame))
+//                //log("<<< ${frame.readText()}")
+//            }
+//        }
       }
     }
 
@@ -51,7 +55,7 @@ abstract class BaseStreamSource<T : Any>(
       log.info(text)
     }
 
-    private fun parseFrame(frame: Frame): T {
+    private fun parseFrame(frame: Frame): T { //TODO: parse plain string
         var frameText = frame as? Frame.Text ?: return error()
         return parseTextFrame(frameText)
     }
