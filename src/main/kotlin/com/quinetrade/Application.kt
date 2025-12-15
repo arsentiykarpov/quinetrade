@@ -1,6 +1,7 @@
 package com.quinetrade
 
 import com.quinetrade.sources.binance.stream.AggTradeStreamSource
+import com.quinetrade.sources.binance.stream.CsvStreamSource
 import com.quinetrade.signals.WhalesSignal
 import com.quinetrade.signals.WHALE_SCHEMA
 import com.quintrade.signals.TradeSignal
@@ -24,6 +25,7 @@ fun Application.initClient() {
     val log = LoggerFactory.getLogger("App logger")
     var spreadStream = OrderBookStreamSource()
     var tradeStream = AggTradeStreamSource()
+    var csvStream = CsvStreamSource()
     var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 5_000, log)
 
     val output: OutputFile = LocalOutputFile(Paths.get("/tmp/whalesignal_${System.currentTimeMillis()}.parquet"))
@@ -40,6 +42,7 @@ fun Application.initClient() {
 
     spreadStream.poll(scope)
     tradeStream.poll(scope)
+    csvStream.poll(scope)
 
     scope.launch {
         try {

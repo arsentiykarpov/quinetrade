@@ -10,6 +10,7 @@ import io.ktor.client.HttpClient
 import com.quinetrade.NetClient
 import com.quintrade.sources.binance.stream.StreamRepository
 import com.quintrade.sources.binance.stream.CsvStreamDataSource
+import com.quintrade.sources.binance.stream.WebSocketDataStream
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.readText
 import kotlinx.coroutines.delay
@@ -22,32 +23,20 @@ import kotlin.reflect.KClass
 
 abstract class BaseStreamSource<T : Any>(
   final override val type: KClass<T>,
-  private var url: String) : StreamSource<T> {
+  var url: String) : StreamSource<T> {
 
     val client: HttpClient = NetClient().client
-    var log = LoggerFactory.getLogger("BinanceWS")
+    var log = LoggerFactory.getLogger(javaClass.simpleName)
     val stream = MutableSharedFlow<T>()
     var pollJob: Job? = null
     var streamRepo: StreamRepository<String> = CsvStreamDataSource()
 
     fun poll(scope: CoroutineScope) {
         pollJob = scope.launch {
-            streamRepo.stream().collect {
-              log.info(it)
-            }
-//        client.webSocket(url) {
-//            launch {
-//                while (isActive) {
-//                    delay(1000)
-//                }
-//            }
-//
-//            for (frame in incoming) {
-//                frame as? Frame.Text ?: continue
-//                stream.emit(parseFrame(frame))
-//                //log("<<< ${frame.readText()}")
-//            }
-//        }
+        getStreamRepository().stream().collect{
+          log.info(it)
+          stream.emit(parseText(it))
+        }
       }
     }
 
@@ -55,12 +44,9 @@ abstract class BaseStreamSource<T : Any>(
       log.info(text)
     }
 
-    private fun parseFrame(frame: Frame): T { //TODO: parse plain string
-        var frameText = frame as? Frame.Text ?: return error()
-        return parseTextFrame(frameText)
-    }
+    abstract fun getStreamRepository(): StreamRepository<String> 
 
-    abstract fun parseTextFrame(frame: Frame.Text): T
+    abstract fun parseText(line: String): T
 
     abstract fun error(): T
 

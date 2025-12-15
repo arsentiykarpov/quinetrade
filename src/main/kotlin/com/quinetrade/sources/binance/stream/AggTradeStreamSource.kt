@@ -4,6 +4,8 @@ import com.quintrade.sources.binance.data.AggTrade
 import com.quintrade.sources.binance.data.AGGTRADE_SCHEMA
 import com.quintrade.sources.binance.data.toAvroRecord
 import com.quintrade.sources.binance.stream.LocalOutputFile
+import com.quintrade.sources.binance.stream.StreamRepository
+import com.quintrade.sources.binance.stream.WebSocketDataStream
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.serialization.json.Json
@@ -25,16 +27,21 @@ class AggTradeStreamSource() : BaseStreamSource<AggTrade>(
         .withCompressionCodec(CompressionCodecName.SNAPPY)
         .build()
 
-    init {
-
+    override fun getStreamRepository(): StreamRepository<String> {
+       return WebSocketDataStream(url)
     }
 
-    override fun parseTextFrame(frame: Frame.Text): AggTrade {
-        val trade = json.decodeFromString<AggTrade.AggTradeDto>(frame.readText())
+    override fun parseText(line: String): AggTrade {
+        val trade = json.decodeFromString<AggTrade.AggTradeDto>(line)
         trade.aggTrade = trade
         writer.write(trade.toAvroRecord())
         return trade
     }
+
+    init {
+
+    }
+
 
     override fun error(): AggTrade {
         val err = AggTrade.AggTradeError("agg trade error")

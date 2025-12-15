@@ -16,9 +16,14 @@ class OrderBookStreamSource() : BaseStreamSource<OrderBookStreamSource.BookStats
 
     var lastUpdateId: Long = 0 // выставьте после snapshot
     val book = OrderBookL2()
-    override fun parseTextFrame(frame: Frame.Text): BookStats {
+
+    override fun getStreamRepository(): StreamRepository<String> {
+        return WebSocketDataStream(url)
+    }
+
+    override fun parseText(line: String): BookStats {
         val json = Json { ignoreUnknownKeys = true }
-        val diff = json.decodeFromString<DepthDiff>(frame.readText())
+        val diff = json.decodeFromString<DepthDiff>(line)
 
         if (diff.prevFinalUpdateId != null && diff.prevFinalUpdateId != lastUpdateId) {
             throw RuntimeException("GAP detected, need resync")
