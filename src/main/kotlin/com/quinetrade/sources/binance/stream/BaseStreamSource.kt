@@ -34,7 +34,7 @@ abstract class BaseStreamSource<T : Any>(
     fun poll(scope: CoroutineScope) {
         pollJob = scope.launch {
         getStreamRepository().stream().collect{
-          log.info(it)
+         // log.info(it)
           stream.emit(parseText(it))
         }
       }
