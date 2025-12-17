@@ -21,6 +21,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.runningFold
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -172,6 +174,24 @@ class TradeSignal(
             supervisor.cancel()
         }
     }
+
+    private data class RetState(
+        val prevMid: Double?,
+        val logRet: Double?
+    )
+
+    fun priceLogReturns(): Flow<Double> =
+        aggWindows()
+            .mapNotNull { it.mid } // mid: Double
+            .runningFold(RetState(prevMid = null, logRet = null)) { state, mid ->
+                val r =
+                    if (state.prevMid != null && state.prevMid > 0.0 && mid > 0.0)
+                        kotlin.math.ln(mid / state.prevMid)
+                    else null
+
+                RetState(prevMid = mid, logRet = r)
+            }
+            .mapNotNull { it.logRet }
 
     fun rotateParq() {
       log.info("START ROTATE")

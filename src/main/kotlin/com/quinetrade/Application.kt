@@ -15,6 +15,7 @@ import org.apache.parquet.avro.AvroParquetWriter
 import org.apache.parquet.hadoop.metadata.CompressionCodecName
 import org.apache.avro.generic.GenericRecord
 import com.quintrade.sources.binance.stream.LocalOutputFile
+import com.quintrade.trade.TradeStrategy
 import java.nio.file.Paths
 
 fun main(args: Array<String>) {
@@ -27,7 +28,6 @@ fun Application.initClient() {
     var tradeStream = AggTradeStreamSource()
     var csvStream = CsvStreamSource()
     var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 5_000, log)
-
     val output: OutputFile = LocalOutputFile(Paths.get("/tmp/whalesignal_${System.currentTimeMillis()}.parquet"))
     val json = Json { ignoreUnknownKeys = true }
     var writer = AvroParquetWriter.builder<GenericRecord>(output)
@@ -38,11 +38,12 @@ fun Application.initClient() {
     val handler = CoroutineExceptionHandler { _, e -> log.error("Coroutine error", e) }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + handler)
 
+    var tradeStrategy = TradeStrategy(tradeSignals, scope, log)
     var whaleSignal: WhalesSignal = WhalesSignal(tradeStream, scope)
 
     spreadStream.poll(scope)
     tradeStream.poll(scope)
-    csvStream.poll(scope)
+//    csvStream.poll(scope)
 
     scope.launch {
         try {
