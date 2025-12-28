@@ -24,20 +24,13 @@ fun main(args: Array<String>) {
 
 fun Application.initClient() {
     val log = LoggerFactory.getLogger("App logger")
-    var spreadStream = OrderBookStreamSource()
-    var tradeStream = AggTradeStreamSource()
-    var csvStream = CsvStreamSource()
-    var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 5_000, log)
-    val output: OutputFile = LocalOutputFile(Paths.get("/tmp/whalesignal_${System.currentTimeMillis()}.parquet"))
-    val json = Json { ignoreUnknownKeys = true }
-    var writer = AvroParquetWriter.builder<GenericRecord>(output)
-       .withSchema(WHALE_SCHEMA)
-       .withCompressionCodec(CompressionCodecName.SNAPPY)
-       .build()
-
     val handler = CoroutineExceptionHandler { _, e -> log.error("Coroutine error", e) }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + handler)
 
+    var spreadStream = OrderBookStreamSource()
+    var tradeStream = AggTradeStreamSource()
+    var csvStream = CsvStreamSource()
+    var tradeSignals: TradeSignal = TradeSignal(spreadStream, tradeStream, 5_000, log, scope)
     var tradeStrategy = TradeStrategy(tradeSignals, scope, log)
     var whaleSignal: WhalesSignal = WhalesSignal(tradeStream, scope)
 
@@ -45,22 +38,22 @@ fun Application.initClient() {
     tradeStream.poll(scope)
 //    csvStream.poll(scope)
 
-    scope.launch {
-        try {
-            tradeSignals.aggWindows().collect {
-            }
-        } catch (e: Exception) {
-        } finally {
-            tradeSignals.stop()
-            scope.cancel()
-        }
-    }
+//    scope.launch {
+//        try {
+//            tradeSignals.observe().collect {
+//            }
+//        } catch (e: Exception) {
+//        } finally {
+//            tradeSignals.stop()
+//            scope.cancel()
+//        }
+//    }
 
     scope.launch {
         try {
-            whaleSignal.observe().collect {
-              log.info("Whale detected: ${it}")
-            }
+          tradeSignals.priceLogReturns().collect {
+            log.debug(it.toString())
+          }
         } catch (e: Exception) {
         } finally {
             //whaleSignal.stop()//TODO:

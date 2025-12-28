@@ -21,10 +21,15 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.runningFold
+import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Job
 import kotlinx.serialization.json.Json
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericRecord
@@ -43,7 +48,8 @@ class TradeSignal(
     val orderBook: OrderBookStreamSource,
     val aggTrade: AggTradeStreamSource,
     val windowMs: Long,
-    val log: Logger
+    val log: Logger,
+    val scope: CoroutineScope
 ) {
 
     val AGG_WINDOW_SCHEMA: Schema = Schema.Parser().parse(
@@ -80,9 +86,25 @@ class TradeSignal(
     private val buf = ArrayDeque<Double>() // buyShare history
     private var cvd = 0.0
     private val zLen = 60
-    private var scope: CoroutineScope? = null
+    private var hotAggWindow: Flow<WindowAgg>? = null
+    private var internalJob: Job? = null
 
-    fun aggWindows(): Flow<WindowAgg> = channelFlow {
+    fun observe(): Flow<WindowAgg> {
+      if (hotAggWindow == null) {
+        hotAggWindow = aggWindows().shareIn(
+          scope = this.scope,
+          started = SharingStarted.WhileSubscribed(
+            stopTimeoutMillis = 5_000,
+            replayExpirationMillis = 0
+          ),
+          replay = 0
+        )
+      }
+      return hotAggWindow!!
+    }
+
+
+    private fun aggWindows(): Flow<WindowAgg> = channelFlow {
         var curBucket = Long.MIN_VALUE
         var tb = 0.0
         var ts = 0.0
@@ -129,11 +151,10 @@ class TradeSignal(
             }
         }
 
-        val supervisor = SupervisorJob(coroutineContext.job)
-        scope = this + supervisor
-        val scoped = scope!!
+        internalJob = SupervisorJob(coroutineContext.job)
+        val internalScope = scope + internalJob!!
 
-        val jobBook = scoped.launch {
+        internalScope.launch {
             orderBook.observeStream().collect { book ->
                 val b = book.t / windowMs
                 events.send(Event.Quote(b))
@@ -143,7 +164,7 @@ class TradeSignal(
             }
         }
 
-        val jobTrades = scoped.launch {
+        internalScope.launch {
             aggTrade.observeStream()
                 .collect { tradeWrapper ->
                     if (tradeWrapper.aggTrade != null) {
@@ -169,9 +190,7 @@ class TradeSignal(
         }
 
         awaitClose {
-            jobTrades.cancel()
-            jobBook.cancel()
-            supervisor.cancel()
+            internalJob!!.cancel()
         }
     }
 
@@ -181,8 +200,8 @@ class TradeSignal(
     )
 
     fun priceLogReturns(): Flow<Double> =
-        aggWindows()
-            .mapNotNull { it.mid } // mid: Double
+        observe()
+            .mapNotNull { it.mid } 
             .runningFold(RetState(prevMid = null, logRet = null)) { state, mid ->
                 val r =
                     if (state.prevMid != null && state.prevMid > 0.0 && mid > 0.0)
@@ -206,7 +225,7 @@ class TradeSignal(
 
     fun stop() {
       writer.close()
-      scope!!.cancel()
+      if (internalJob != null) internalJob!!.cancel()
     }
 
     fun saveRecord(w: WindowAgg) {
@@ -223,7 +242,7 @@ class TradeSignal(
             .set("mid", w.mid)
             .build()
         writer.write(record)
-        log.info("Writing record: ${w.windowStart}")
+        log.info("Writing record: ${w.windowStart}, mid price: ${w.mid}")
     }
 
     data class WindowAgg(
